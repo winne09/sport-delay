@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sport-Delay">
+<meta name="theme-color" content="#000000">
+<title>Sport-Delay</title>
+<style>
+  :root { --acc:#ffb020; --bg:rgba(20,20,22,.82); --fg:#f4f4f5; --mut:#a1a1aa; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:#000; color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden;
+    -webkit-user-select:none; user-select:none; touch-action:manipulation; }
+  #stage { position:fixed; inset:0; }
+  #out { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; }
+  .mirror { transform:scaleX(-1); }
+  /* Kamerabild muss im DOM "sichtbar" bleiben, damit iOS es weiter aktualisiert */
+  #cam { position:fixed; width:2px; height:2px; left:0; top:0; opacity:0; pointer-events:none; }
+  #cam.pip { width:22vw; max-width:260px; height:auto; opacity:1; left:auto; top:auto;
+    right:calc(12px + env(safe-area-inset-right)); top:calc(12px + env(safe-area-inset-top));
+    border:2px solid var(--acc); border-radius:10px; z-index:5; }
+  #cam.pip.mirror { transform:scaleX(-1); }
+
+  #badge { position:absolute; left:calc(12px + env(safe-area-inset-left)); top:calc(12px + env(safe-area-inset-top));
+    background:var(--bg); padding:8px 14px; border-radius:999px; font-weight:700; font-size:20px;
+    display:flex; align-items:center; gap:8px; z-index:4; }
+  #badge .dot { width:10px; height:10px; border-radius:50%; background:var(--acc); animation:blink 1.4s infinite; }
+  #badge.paused .dot { animation:none; background:#60a5fa; }
+  @keyframes blink { 50% { opacity:.25; } }
+
+  #overlay { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.55); z-index:3; text-align:center; pointer-events:none; }
+  #overlay .big { font-size:min(28vw,220px); font-weight:800; color:var(--acc); line-height:1; }
+  #overlay .small { font-size:20px; color:var(--fg); margin-top:12px; }
+
+  #controls { position:absolute; left:0; right:0; bottom:0; z-index:6; background:var(--bg);
+    padding:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    display:flex; flex-direction:column; gap:10px; transition:transform .25s, opacity .25s; }
+  #controls.hidden { transform:translateY(110%); opacity:0; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; }
+  button, select { font:inherit; font-size:17px; color:var(--fg); background:#2a2a2e; border:1px solid #3f3f46;
+    border-radius:12px; min-height:48px; padding:0 16px; cursor:pointer; }
+  button:active { background:#3f3f46; }
+  button.on { background:var(--acc); color:#111; border-color:var(--acc); font-weight:700; }
+  button.round { width:52px; padding:0; font-size:26px; font-weight:700; }
+  #delayVal { min-width:96px; text-align:center; font-size:28px; font-weight:800; }
+  .chip { min-height:44px; padding:0 14px; }
+  .sep { width:1px; height:32px; background:#3f3f46; margin:0 4px; }
+
+  #scrubBar { display:none; align-items:center; gap:10px; }
+  #scrubBar.show { display:flex; }
+  #scrub { flex:1; height:40px; accent-color:var(--acc); }
+  #scrubLbl { min-width:80px; text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+
+  #info { font-size:13px; color:var(--mut); text-align:center; }
+
+  #start { position:absolute; inset:0; z-index:10; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 30%, #2a2112, #000 70%); padding:24px; }
+  #start .card { max-width:560px; text-align:center; }
+  #start h1 { font-size:40px; margin:0 0 8px; }
+  #start h1 span { color:var(--acc); }
+  #start p { color:#d4d4d8; font-size:17px; line-height:1.5; }
+  #start .go { background:var(--acc); color:#111; font-weight:800; font-size:22px; min-height:60px; padding:0 32px; border:0; margin:16px 0; }
+  #start .priv { font-size:14px; color:var(--mut); border-top:1px solid #333; padding-top:14px; margin-top:12px; }
+  #err { color:#fca5a5; font-weight:600; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="out" width="16" height="9"></canvas>
+  <video id="cam" playsinline muted autoplay></video>
+
+  <div id="badge"><span class="dot"></span><span id="badgeTxt">10 s</span></div>
+
+  <div id="overlay"><div class="big" id="cdNum">10</div><div class="small" id="cdTxt">Wiedergabe startet gleich …</div></div>
+
+  <div id="controls">
+    <div class="row" id="scrubBar">
+      <button class="round" id="stepBack" aria-label="Bild zurück">‹</button>
+      <input type="range" id="scrub" min="0" max="0" step="1" value="0">
+      <button class="round" id="stepFwd" aria-label="Bild vor">›</button>
+      <span id="scrubLbl">0,0 s</span>
+    </div>
+    <div class="row">
+      <button class="round" id="minus" aria-label="Weniger Verzögerung">−</button>
+      <div id="delayVal">10 s</div>
+      <button class="round" id="plus" aria-label="Mehr Verzögerung">+</button>
+      <span class="sep"></span>
+      <span id="chips"></span>
+    </div>
+    <div class="row">
+      <button id="pause">⏸ Pause</button>
+      <button id="flip">🔄 Kamera</button>
+      <button id="mirrorBtn">⇋ Spiegeln</button>
+      <button id="pipBtn">Live-Bild</button>
+      <select id="quality" aria-label="Qualität">
+        <option value="spar">Qualität: Sparsam</option>
+        <option value="standard">Qualität: Standard</option>
+        <option value="hoch">Qualität: Hoch</option>
+      </select>
+      <button id="fs">⛶ Vollbild</button>
+      <button id="clear">🗑 Puffer leeren</button>
+    </div>
+    <div id="info"></div>
+  </div>
+
+  <div id="start">
+    <div class="card">
+      <h1>Sport-<span>Delay</span></h1>
+      <p>Die Kamera filmt, und das Bild erscheint mit einstellbarer Verzögerung auf dem Bildschirm.
+         Die Schülerinnen und Schüler machen ihre Übung, kommen zum Gerät und sehen sich direkt selbst.</p>
+      <button class="go" id="goBtn">▶ Kamera starten</button>
+      <div id="err"></div>
+      <div class="priv">🔒 <b>Es wird nichts gespeichert und nichts übertragen.</b> Das Bild liegt nur wenige Sekunden
+        im Arbeitsspeicher dieses Geräts und wird laufend überschrieben. Beim Schließen oder Wechseln der App ist alles gelöscht.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const video = $('cam'), out = $('out'), octx = out.getContext('2d');
+  const cap = document.createElement('canvas'), cctx = cap.getContext('2d');
+
+  const QUAL = {
+    spar:     { w: 640,  fps: 20, q: 0.6,  camW: 1280, camH: 720 },
+    standard: { w: 960,  fps: 25, q: 0.7,  camW: 1280, camH: 720 },
+    hoch:     { w: 1280, fps: 30, q: 0.75, camW: 1920, camH: 1080 }
+  };
+  const PRESETS = [3, 5, 10, 15, 20, 30];
+  const MIN_DELAY = 1, MAX_DELAY = 60;
+  const REPLAY_KEEP = 12000;          // ms Verlauf zusätzlich zur Verzögerung (für Zurückspulen)
+  const MAX_BYTES = 300 * 1024 * 1024; // Sicherheitsgrenze Arbeitsspeicher
+
+  const state = { delay: 10, facing: 'environment', mirror: false, quality: 'standard', paused: false, pip: false };
+  try { Object.assign(state, JSON.parse(localStorage.getItem('sportdelay') || '{}'), { paused: false, pip: false }); } catch (e) {}
+  const save = () => { try { localStorage.setItem('sportdelay', JSON.stringify({
+    delay: state.delay, facing: state.facing, mirror: state.mirror, quality: state.quality })); } catch (e) {} };
+
+  let stream = null, running = false, capTimer = null, pending = 0;
+  let buffer = [], bytes = 0, shownT = -1;
+  let decoding = false, want = null;
+  let snapshot = null, pausedAt = 0;
+  let wakeLock = null, hideTimer = null;
+
+  // ---------- Kamera ----------
+  async function startCamera() {
+    stopCamera();
+    const q = QUAL[state.quality];
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('insecure');
+    }
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: state.facing }, width: { ideal: q.camW }, height: { ideal: q.camH }, frameRate: { ideal: 30 } }
+    });
+    video.srcObject = stream;
+    try { await video.play(); } catch (e) {}
+    if (!video.videoWidth) await new Promise(r => video.addEventListener('loadedmetadata', r, { once: true }));
+    clearBuffer();
+    startCapture();
+    requestWakeLock();
+  }
+  function stopCamera() {
+    clearInterval(capTimer); capTimer = null;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null; video.srcObject = null;
+  }
+
+  // ---------- Aufnahme in Ringpuffer (nur Arbeitsspeicher) ----------
+  function startCapture() {
+    clearInterval(capTimer);
+    capTimer = setInterval(captureFrame, 1000 / QUAL[state.quality].fps);
+  }
+  function captureFrame() {
+    if (!stream || video.readyState < 2) return;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh || pending > 2) return; // Encoder ausgelastet -> Bild auslassen
+    const q = QUAL[state.quality];
+    const s = Math.min(1, q.w / Math.max(vw, vh));
+    const w = Math.round(vw * s), h = Math.round(vh * s);
+    if (cap.width !== w || cap.height !== h) { cap.width = w; cap.height = h; }
+    cctx.drawImage(video, 0, 0, w, h);
+    const t = performance.now();
+    pending++;
+    cap.toBlob(b => {
+      pending--;
+      if (!b || !stream) return;
+      buffer.push({ t, b });
+      bytes += b.size;
+      trim();
+    }, 'image/jpeg', q.q);
+  }
+  function trim() {
+    const keepFrom = performance.now() - state.delay * 1000 - REPLAY_KEEP;
+    while (buffer.length > 1 && buffer[1].t < keepFrom) { bytes -= buffer[0].b.size; buffer.shift(); }
+    while (bytes > MAX_BYTES && buffer.length > 1) { bytes -= buffer[0].b.size; buffer.shift(); }
+  }
+  function clearBuffer() {
+    buffer = []; bytes = 0; shownT = -1; want = null;
+    octx.clearRect(0, 0, out.width, out.height);
+  }
+
+  // ---------- Anzeige ----------
+  async function decodeAndDraw(f) {
+    try {
+      let img;
+      if (window.createImageBitmap) img = await createImageBitmap(f.b);
+      else img = await new Promise((res, rej) => {
+        const u = URL.createObjectURL(f.b), i = new Image();
+        i.onload = () => { URL.revokeObjectURL(u); res(i); };
+        i.onerror = e => { URL.revokeObjectURL(u); rej(e); };
+        i.src = u;
+      });
+      const w = img.width, h = img.height;
+      if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
+      octx.drawImage(img, 0, 0);
+      if (img.close) img.close();
+      shownT = f.t;
+    } catch (e) { /* Bild überspringen */ }
+  }
+  async function requestDraw(f) {
+    want = f;
+    if (decoding) return;
+    decoding = true;
+    while (want) { const g = want; want = null; await decodeAndDraw(g); }
+    decoding = false;
+  }
+
+  function render() {
+    requestAnimationFrame(render);
+    if (!running || state.paused) return;
+    const now = performance.now();
+    const target = now - state.delay * 1000;
+    let f = null;
+    for (let i = buffer.length - 1; i >= 0; i--) { if (buffer[i].t <= target) { f = buffer[i]; break; } }
+    if (!f) {
+      const firstT = buffer.length ? buffer[0].t : now;
+      const wait = Math.max(1, Math.ceil((firstT - target) / 1000));
+      showCountdown(wait);
+      return;
+    }
+    hideCountdown();
+    if (f.t !== shownT && (!want || want.t !== f.t)) requestDraw(f);
+  }
+
+  let lastCd = null;
+  function showCountdown(n) {
+    $('overlay').style.display = 'flex';
+    if (n !== lastCd) { $('cdNum').textContent = n; lastCd = n; }
+  }
+  function hideCountdown() { if (lastCd !== null) { $('overlay').style.display = 'none'; lastCd = null; } }
+
+  // ---------- Pause & Zurückspulen ----------
+  function setPaused(p) {
+    state.paused = p;
+    if (p) {
+      snapshot = buffer.slice();
+      pausedAt = shownT;
+      let idx = snapshot.findIndex(f => f.t === shownT);
+      if (idx < 0) idx = Math.max(0, snapshot.length - 1);
+      $('scrub').max = Math.max(0, snapshot.length - 1);
+      $('scrub').value = idx;
+      hideCountdown();
+      updateScrubLabel();
+      showControls(true);
+    } else {
+      snapshot = null;
+    }
+    updateUI();
+  }
+  function scrubTo(i) {
+    if (!snapshot || !snapshot.length) return;
+    i = Math.max(0, Math.min(snapshot.length - 1, i));
+    $('scrub').value = i;
+    requestDraw(snapshot[i]);
+    updateScrubLabel();
+  }
+  function updateScrubLabel() {
+    if (!snapshot || !snapshot.length) { $('scrubLbl').textContent = '–'; return; }
+    const f = snapshot[+$('scrub').value];
+    const d = (f.t - pausedAt) / 1000;
+    $('scrubLbl').textContent = (d > 0.05 ? '+' : d < -0.05 ? '−' : '') + Math.abs(d).toFixed(1).replace('.', ',') + ' s';
+  }
+
+  // ---------- Bedienung ----------
+  function setDelay(d) {
+    state.delay = Math.max(MIN_DELAY, Math.min(MAX_DELAY, d));
+    save(); updateUI();
+  }
+  function updateUI() {
+    $('delayVal').textContent = state.delay + ' s';
+    $('badgeTxt').textContent = state.paused ? 'Pause' : state.delay + ' s verzögert';
+    $('badge').classList.toggle('paused', state.paused);
+    $('pause').textContent = state.paused ? '▶ Weiter' : '⏸ Pause';
+    $('pause').classList.toggle('on', state.paused);
+    $('scrubBar').classList.toggle('show', state.paused);
+    $('mirrorBtn').classList.toggle('on', state.mirror);
+    $('pipBtn').classList.toggle('on', state.pip);
+    out.classList.toggle('mirror', state.mirror);
+    video.classList.toggle('mirror', state.mirror);
+    video.classList.toggle('pip', state.pip);
+    $('quality').value = state.quality;
+    document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', +b.dataset.d === state.delay));
+  }
+
+  PRESETS.forEach(d => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = d + ' s'; b.dataset.d = d;
+    b.onclick = () => setDelay(d);
+    $('chips').appendChild(b);
+    $('chips').append(' ');
+  });
+  $('minus').onclick = () => setDelay(state.delay - 1);
+  $('plus').onclick = () => setDelay(state.delay + 1);
+  $('pause').onclick = () => setPaused(!state.paused);
+  $('scrub').oninput = () => scrubTo(+$('scrub').value);
+  $('stepBack').onclick = () => scrubTo(+$('scrub').value - 1);
+  $('stepFwd').onclick = () => scrubTo(+$('scrub').value + 1);
+  $('mirrorBtn').onclick = () => { state.mirror = !state.mirror; save(); updateUI(); };
+  $('pipBtn').onclick = () => { state.pip = !state.pip; updateUI(); };
+  $('clear').onclick = () => { if (state.paused) setPaused(false); clearBuffer(); };
+  $('flip').onclick = async () => {
+    state.facing = state.facing === 'user' ? 'environment' : 'user';
+    state.mirror = state.facing === 'user';
+    save(); updateUI();
+    if (state.paused) setPaused(false);
+    try { await startCamera(); } catch (e) { fail(e); }
+  };
+  $('quality').onchange = async () => {
+    state.quality = $('quality').value; save();
+    if (state.paused) setPaused(false);
+    try { await startCamera(); } catch (e) { fail(e); }
+  };
+  $('fs').onclick = () => {
+    const el = document.documentElement;
+    const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+    try {
+      if (isFs) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else {
+        const req = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (req) { const p = req.call(el); if (p && p.catch) p.catch(fsHint); } else fsHint();
+      }
+    } catch (e) { fsHint(); }
+  };
+  function fsHint() {
+    $('info').textContent = 'Vollbild wird hier nicht unterstützt – Tipp: Seite über „Teilen → Zum Home-Bildschirm“ als App ablegen.';
+  }
+
+  // Steuerleiste ein-/ausblenden (Tippen aufs Bild)
+  function showControls(stay) {
+    $('controls').classList.remove('hidden');
+    clearTimeout(hideTimer);
+    if (!stay && !state.paused) hideTimer = setTimeout(() => $('controls').classList.add('hidden'), 6000);
+  }
+  $('out').addEventListener('click', () => {
+    if ($('controls').classList.contains('hidden')) showControls(); else if (!state.paused) $('controls').classList.add('hidden');
+  });
+  $('controls').addEventListener('pointerdown', () => showControls());
+
+  // Bildschirm wach halten
+  async function requestWakeLock() {
+    try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) {}
+  }
+
+  // App verlassen -> Kamera aus, Puffer gelöscht
+  document.addEventListener('visibilitychange', async () => {
+    if (!running) return;
+    if (document.hidden) { if (state.paused) setPaused(false); stopCamera(); clearBuffer(); }
+    else { try { await startCamera(); } catch (e) { fail(e); } }
+  });
+
+  function fail(e) {
+    running = false; stopCamera();
+    $('start').style.display = 'flex';
+    let msg = 'Die Kamera konnte nicht gestartet werden.';
+    if (e && e.message === 'insecure') msg = 'Die Seite muss über eine sichere Adresse (https://) geöffnet werden, sonst gibt der Browser die Kamera nicht frei.';
+    else if (e && e.name === 'NotAllowedError') msg = 'Der Kamerazugriff wurde verweigert. Bitte in den Browser-Einstellungen für diese Seite erlauben und erneut starten.';
+    else if (e && e.name === 'NotFoundError') msg = 'Es wurde keine Kamera gefunden.';
+    else if (e && e.name === 'NotReadableError') msg = 'Die Kamera wird gerade von einer anderen App benutzt.';
+    $('err').textContent = msg;
+  }
+
+  $('goBtn').onclick = async () => {
+    $('err').textContent = '';
+    try {
+      await startCamera();
+      running = true;
+      $('start').style.display = 'none';
+      showControls();
+    } catch (e) { fail(e); }
+  };
+
+  // Puffer-Anzeige
+  setInterval(() => {
+    if (!running) return;
+    const secs = buffer.length > 1 ? ((buffer[buffer.length - 1].t - buffer[0].t) / 1000).toFixed(0) : 0;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!$('info').textContent.startsWith('Vollbild'))
+      $('info').textContent = `Puffer: ${secs} s · ${(bytes / 1048576).toFixed(0)} MB im Arbeitsspeicher · Kamera ${vw}×${vh} · nichts wird gespeichert`;
+  }, 1000);
+
+  updateUI();
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>
