@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#000000">
 <title>Sport-Delay</title>
 <style>
-  :root { --acc:#ffb020; --bg:rgba(20,20,22,.82); --fg:#f4f4f5; --mut:#a1a1aa; }
+  :root { --acc:#ffb020; --blue:#60a5fa; --bg:rgba(20,20,22,.86); --fg:#f4f4f5; --mut:#a1a1aa; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { margin:0; height:100%; background:#000; color:var(--fg);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden;
@@ -20,16 +20,16 @@
   .mirror { transform:scaleX(-1); }
   /* Kamerabild muss im DOM "sichtbar" bleiben, damit iOS es weiter aktualisiert */
   #cam { position:fixed; width:2px; height:2px; left:0; top:0; opacity:0; pointer-events:none; }
-  #cam.pip { width:22vw; max-width:260px; height:auto; opacity:1; left:auto; top:auto;
+  #cam.pip { width:22vw; max-width:260px; height:auto; opacity:1; left:auto;
     right:calc(12px + env(safe-area-inset-right)); top:calc(12px + env(safe-area-inset-top));
     border:2px solid var(--acc); border-radius:10px; z-index:5; }
-  #cam.pip.mirror { transform:scaleX(-1); }
 
   #badge { position:absolute; left:calc(12px + env(safe-area-inset-left)); top:calc(12px + env(safe-area-inset-top));
     background:var(--bg); padding:8px 14px; border-radius:999px; font-weight:700; font-size:20px;
-    display:flex; align-items:center; gap:8px; z-index:4; }
+    display:flex; align-items:center; gap:8px; z-index:4; pointer-events:none; }
   #badge .dot { width:10px; height:10px; border-radius:50%; background:var(--acc); animation:blink 1.4s infinite; }
-  #badge.paused .dot { animation:none; background:#60a5fa; }
+  body.mode-pause #badge .dot { animation:none; background:var(--blue); }
+  body.replaying #badge .dot { animation:blink .7s infinite; background:var(--blue); }
   @keyframes blink { 50% { opacity:.25; } }
 
   #overlay { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
@@ -38,29 +38,38 @@
   #overlay .small { font-size:20px; color:var(--fg); margin-top:12px; }
 
   #controls { position:absolute; left:0; right:0; bottom:0; z-index:6; background:var(--bg);
-    padding:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    padding:4px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
     display:flex; flex-direction:column; gap:10px; transition:transform .25s, opacity .25s; }
-  #controls.hidden { transform:translateY(110%); opacity:0; }
+  #controls.hidden { transform:translateY(110%); opacity:0; pointer-events:none; }
+  #handle { align-self:center; width:100%; height:26px; border:0; background:none; min-height:0; padding:0;
+    display:flex; align-items:center; justify-content:center; }
+  #handle span { width:56px; height:6px; border-radius:3px; background:#71717a; }
   .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; }
+  body.mode-live .pauseOnly, body.mode-pause .liveOnly { display:none !important; }
   button, select { font:inherit; font-size:17px; color:var(--fg); background:#2a2a2e; border:1px solid #3f3f46;
     border-radius:12px; min-height:48px; padding:0 16px; cursor:pointer; }
   button:active { background:#3f3f46; }
   button.on { background:var(--acc); color:#111; border-color:var(--acc); font-weight:700; }
+  button.blue { background:var(--blue); color:#111; border-color:var(--blue); font-weight:700; }
+  button.stop { border-color:#7f1d1d; color:#fca5a5; }
   button.round { width:52px; padding:0; font-size:26px; font-weight:700; }
   #delayVal { min-width:96px; text-align:center; font-size:28px; font-weight:800; }
   .chip { min-height:44px; padding:0 14px; }
   .sep { width:1px; height:32px; background:#3f3f46; margin:0 4px; }
 
-  #scrubBar { display:none; align-items:center; gap:10px; }
-  #scrubBar.show { display:flex; }
-  #scrub { flex:1; height:40px; accent-color:var(--acc); }
-  #scrubLbl { min-width:80px; text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
-
+  #scrubRow { flex-wrap:nowrap; }
+  #scrub { flex:1; min-width:120px; height:40px; accent-color:var(--blue); }
+  #scrubLbl { min-width:72px; text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
   #info { font-size:13px; color:var(--mut); text-align:center; }
 
+  #mini { position:absolute; z-index:6; bottom:calc(14px + env(safe-area-inset-bottom)); right:calc(14px + env(safe-area-inset-right));
+    display:none; gap:8px; background:var(--bg); padding:8px; border-radius:16px; }
+  #mini.show { display:flex; }
+  #mini button { min-height:52px; }
+
   #start { position:absolute; inset:0; z-index:10; display:flex; align-items:center; justify-content:center;
-    background:radial-gradient(circle at 50% 30%, #2a2112, #000 70%); padding:24px; }
-  #start .card { max-width:560px; text-align:center; }
+    background:radial-gradient(circle at 50% 30%, #2a2112, #000 70%); padding:24px; overflow:auto; }
+  #start .card { max-width:580px; text-align:center; }
   #start h1 { font-size:40px; margin:0 0 8px; }
   #start h1 span { color:var(--acc); }
   #start p { color:#d4d4d8; font-size:17px; line-height:1.5; }
@@ -69,31 +78,44 @@
   #err { color:#fca5a5; font-weight:600; }
 </style>
 </head>
-<body>
+<body class="mode-live">
 <div id="stage">
   <canvas id="out" width="16" height="9"></canvas>
   <video id="cam" playsinline muted autoplay></video>
 
   <div id="badge"><span class="dot"></span><span id="badgeTxt">10 s</span></div>
 
-  <div id="overlay"><div class="big" id="cdNum">10</div><div class="small" id="cdTxt">Wiedergabe startet gleich …</div></div>
+  <div id="overlay"><div class="big" id="cdNum">10</div><div class="small">Wiedergabe startet gleich …</div></div>
 
   <div id="controls">
-    <div class="row" id="scrubBar">
+    <button id="handle" aria-label="Menü ausblenden"><span></span></button>
+
+    <!-- Analyse-Modus (Pause / Slow-Mo) -->
+    <div class="row pauseOnly" id="scrubRow">
       <button class="round" id="stepBack" aria-label="Bild zurück">‹</button>
-      <input type="range" id="scrub" min="0" max="0" step="1" value="0">
+      <input type="range" id="scrub" min="0" max="0" step="1" value="0" aria-label="Zeitleiste">
       <button class="round" id="stepFwd" aria-label="Bild vor">›</button>
       <span id="scrubLbl">0,0 s</span>
     </div>
-    <div class="row">
+    <div class="row pauseOnly">
+      <button id="play" class="blue">▶ Abspielen</button>
+      <span id="speeds"></span>
+      <button id="loopBtn">🔁 Schleife</button>
+      <span class="sep"></span>
+      <button id="resume" class="on">● Zurück zu Live</button>
+    </div>
+
+    <!-- Live-Modus -->
+    <div class="row liveOnly">
       <button class="round" id="minus" aria-label="Weniger Verzögerung">−</button>
       <div id="delayVal">10 s</div>
       <button class="round" id="plus" aria-label="Mehr Verzögerung">+</button>
       <span class="sep"></span>
       <span id="chips"></span>
     </div>
-    <div class="row">
+    <div class="row liveOnly">
       <button id="pause">⏸ Pause</button>
+      <button id="slomo" class="blue">🐢 Slow-Mo</button>
       <button id="flip">🔄 Kamera</button>
       <button id="mirrorBtn">⇋ Spiegeln</button>
       <button id="pipBtn">Live-Bild</button>
@@ -104,28 +126,42 @@
       </select>
       <button id="fs">⛶ Vollbild</button>
       <button id="clear">🗑 Puffer leeren</button>
+      <button id="stopBtn" class="stop">⏹ Stopp</button>
     </div>
     <div id="info"></div>
+  </div>
+
+  <!-- kleine Leiste, wenn das Menü weggeschoben ist -->
+  <div id="mini">
+    <button class="round pauseOnly" id="mBack" aria-label="Bild zurück">‹</button>
+    <button class="pauseOnly blue" id="mPlay">▶</button>
+    <button class="round pauseOnly" id="mFwd" aria-label="Bild vor">›</button>
+    <button class="liveOnly" id="mPause">⏸</button>
+    <button class="liveOnly blue" id="mSlomo">🐢</button>
+    <button id="mMenu">☰ Menü</button>
   </div>
 
   <div id="start">
     <div class="card">
       <h1>Sport-<span>Delay</span></h1>
-      <p>Die Kamera filmt, und das Bild erscheint mit einstellbarer Verzögerung auf dem Bildschirm.
-         Die Schülerinnen und Schüler machen ihre Übung, kommen zum Gerät und sehen sich direkt selbst.</p>
+      <p>Die Kamera filmt, das Bild erscheint mit einstellbarer Verzögerung auf dem Bildschirm.
+         Die Schülerinnen und Schüler machen ihre Übung, kommen zum Gerät und sehen sich direkt selbst –
+         auf Wunsch in Zeitlupe.</p>
       <button class="go" id="goBtn">▶ Kamera starten</button>
       <div id="err"></div>
       <div class="priv">🔒 <b>Es wird nichts gespeichert und nichts übertragen.</b> Das Bild liegt nur wenige Sekunden
-        im Arbeitsspeicher dieses Geräts und wird laufend überschrieben. Beim Schließen oder Wechseln der App ist alles gelöscht.</div>
+        im Arbeitsspeicher dieses Geräts und wird laufend überschrieben. Mit „Stopp“, beim Schließen oder Wechseln der App ist alles gelöscht.</div>
     </div>
   </div>
 </div>
 
 <script>
 (() => {
+  const VERSION = 'v2';
   const $ = id => document.getElementById(id);
   const video = $('cam'), out = $('out'), octx = out.getContext('2d');
   const cap = document.createElement('canvas'), cctx = cap.getContext('2d');
+  const scrub = $('scrub');
 
   const QUAL = {
     spar:     { w: 640,  fps: 20, q: 0.6,  camW: 1280, camH: 720 },
@@ -133,28 +169,31 @@
     hoch:     { w: 1280, fps: 30, q: 0.75, camW: 1920, camH: 1080 }
   };
   const PRESETS = [3, 5, 10, 15, 20, 30];
+  const SPEEDS = [[1, '1×'], [0.5, '½×'], [0.25, '¼×']];
   const MIN_DELAY = 1, MAX_DELAY = 60;
-  const REPLAY_KEEP = 12000;          // ms Verlauf zusätzlich zur Verzögerung (für Zurückspulen)
+  const REPLAY_KEEP = 12000;           // ms Verlauf zusätzlich zur Verzögerung (für Zurückspulen)
+  const SLOMO_WINDOW = 5000;           // ms, die "Slow-Mo" rückwirkend wiederholt
+  const LOOP_HOLD = 700;               // ms Standbild am Schleifenende
   const MAX_BYTES = 300 * 1024 * 1024; // Sicherheitsgrenze Arbeitsspeicher
 
-  const state = { delay: 10, facing: 'environment', mirror: false, quality: 'standard', paused: false, pip: false };
-  try { Object.assign(state, JSON.parse(localStorage.getItem('sportdelay') || '{}'), { paused: false, pip: false }); } catch (e) {}
+  const state = { delay: 10, facing: 'environment', mirror: false, quality: 'standard', speed: 0.5, loop: true, pip: false };
+  try { Object.assign(state, JSON.parse(localStorage.getItem('sportdelay') || '{}'), { pip: false }); } catch (e) {}
   const save = () => { try { localStorage.setItem('sportdelay', JSON.stringify({
-    delay: state.delay, facing: state.facing, mirror: state.mirror, quality: state.quality })); } catch (e) {} };
+    delay: state.delay, facing: state.facing, mirror: state.mirror, quality: state.quality, speed: state.speed, loop: state.loop })); } catch (e) {} };
 
   let stream = null, running = false, capTimer = null, pending = 0;
   let buffer = [], bytes = 0, shownT = -1;
   let decoding = false, want = null;
-  let snapshot = null, pausedAt = 0;
-  let wakeLock = null, hideTimer = null;
+  let mode = 'live';                    // 'live' | 'pause'
+  let snapshot = null, pausedAt = 0, pausedIdx = 0, curIdx = 0;
+  let replay = false, loopStart = 0, loopEnd = 0, replayPos = 0, lastTick = 0, holdUntil = 0;
+  let wakeLock = null, hideTimer = null, controlsVisible = true;
 
   // ---------- Kamera ----------
   async function startCamera() {
     stopCamera();
     const q = QUAL[state.quality];
-    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('insecure');
-    }
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('insecure');
     stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { facingMode: { ideal: state.facing }, width: { ideal: q.camW }, height: { ideal: q.camH }, frameRate: { ideal: 30 } }
@@ -163,7 +202,7 @@
     try { await video.play(); } catch (e) {}
     if (!video.videoWidth) await new Promise(r => video.addEventListener('loadedmetadata', r, { once: true }));
     clearBuffer();
-    startCapture();
+    capTimer = setInterval(captureFrame, 1000 / q.fps);
     requestWakeLock();
   }
   function stopCamera() {
@@ -173,10 +212,6 @@
   }
 
   // ---------- Aufnahme in Ringpuffer (nur Arbeitsspeicher) ----------
-  function startCapture() {
-    clearInterval(capTimer);
-    capTimer = setInterval(captureFrame, 1000 / QUAL[state.quality].fps);
-  }
   function captureFrame() {
     if (!stream || video.readyState < 2) return;
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -217,8 +252,7 @@
         i.onerror = e => { URL.revokeObjectURL(u); rej(e); };
         i.src = u;
       });
-      const w = img.width, h = img.height;
-      if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
+      if (out.width !== img.width || out.height !== img.height) { out.width = img.width; out.height = img.height; }
       octx.drawImage(img, 0, 0);
       if (img.close) img.close();
       shownT = f.t;
@@ -234,15 +268,31 @@
 
   function render() {
     requestAnimationFrame(render);
-    if (!running || state.paused) return;
+    if (!running) return;
     const now = performance.now();
+
+    if (mode === 'pause') {
+      if (!replay || !snapshot) return;
+      const dt = now - lastTick; lastTick = now;
+      if (holdUntil) {                       // kurzes Standbild am Schleifenende
+        if (now < holdUntil) return;
+        holdUntil = 0; replayPos = snapshot[loopStart].t; showIdx(loopStart);
+        return;
+      }
+      replayPos += dt * state.speed;
+      let i = curIdx;
+      while (i < loopEnd && snapshot[i + 1].t <= replayPos) i++;
+      if (i !== curIdx) showIdx(i);
+      if (i >= loopEnd) { if (state.loop) holdUntil = now + LOOP_HOLD; else stopReplay(); }
+      return;
+    }
+
     const target = now - state.delay * 1000;
     let f = null;
     for (let i = buffer.length - 1; i >= 0; i--) { if (buffer[i].t <= target) { f = buffer[i]; break; } }
     if (!f) {
       const firstT = buffer.length ? buffer[0].t : now;
-      const wait = Math.max(1, Math.ceil((firstT - target) / 1000));
-      showCountdown(wait);
+      showCountdown(Math.max(1, Math.ceil((firstT - target) / 1000)));
       return;
     }
     hideCountdown();
@@ -254,38 +304,64 @@
     $('overlay').style.display = 'flex';
     if (n !== lastCd) { $('cdNum').textContent = n; lastCd = n; }
   }
-  function hideCountdown() { if (lastCd !== null) { $('overlay').style.display = 'none'; lastCd = null; } }
+  function hideCountdown() { $('overlay').style.display = 'none'; lastCd = null; }
 
-  // ---------- Pause & Zurückspulen ----------
-  function setPaused(p) {
-    state.paused = p;
-    if (p) {
-      snapshot = buffer.slice();
-      pausedAt = shownT;
-      let idx = snapshot.findIndex(f => f.t === shownT);
-      if (idx < 0) idx = Math.max(0, snapshot.length - 1);
-      $('scrub').max = Math.max(0, snapshot.length - 1);
-      $('scrub').value = idx;
-      hideCountdown();
-      updateScrubLabel();
-      showControls(true);
-    } else {
-      snapshot = null;
-    }
+  // ---------- Analyse: Pause, Zurückspulen, Slow-Mo ----------
+  function enterPause() {
+    if (!running || shownT < 0 || !buffer.length) return false;
+    mode = 'pause';
+    snapshot = buffer.slice();               // eingefrorene Kopie der letzten Sekunden
+    pausedAt = shownT;
+    let idx = snapshot.findIndex(f => f.t === shownT);
+    if (idx < 0) idx = snapshot.length - 1;
+    pausedIdx = idx;
+    scrub.max = Math.max(0, snapshot.length - 1);
+    hideCountdown();
+    showIdx(idx);
     updateUI();
+    return true;
   }
-  function scrubTo(i) {
+  function exitPause() {
+    replay = false; holdUntil = 0;
+    mode = 'live'; snapshot = null;
+    updateUI();
+    showControls();
+  }
+  function showIdx(i) {
     if (!snapshot || !snapshot.length) return;
     i = Math.max(0, Math.min(snapshot.length - 1, i));
-    $('scrub').value = i;
+    curIdx = i;
+    scrub.value = i;
     requestDraw(snapshot[i]);
-    updateScrubLabel();
-  }
-  function updateScrubLabel() {
-    if (!snapshot || !snapshot.length) { $('scrubLbl').textContent = '–'; return; }
-    const f = snapshot[+$('scrub').value];
-    const d = (f.t - pausedAt) / 1000;
+    const d = (snapshot[i].t - pausedAt) / 1000;
     $('scrubLbl').textContent = (d > 0.05 ? '+' : d < -0.05 ? '−' : '') + Math.abs(d).toFixed(1).replace('.', ',') + ' s';
+  }
+  function step(n) { stopReplay(); showIdx(curIdx + n); }
+  function startReplay(from, to) {
+    if (!snapshot || snapshot.length < 2) return;
+    loopStart = Math.max(0, from); loopEnd = Math.min(snapshot.length - 1, to);
+    if (loopEnd <= loopStart) { loopStart = 0; loopEnd = snapshot.length - 1; }
+    replayPos = snapshot[loopStart].t; lastTick = performance.now(); holdUntil = 0;
+    replay = true;
+    showIdx(loopStart);
+    updateUI();
+  }
+  function stopReplay() { if (replay) { replay = false; holdUntil = 0; updateUI(); } }
+  function togglePlay() {
+    if (mode !== 'pause') return;
+    if (replay) { stopReplay(); return; }
+    let from = curIdx;
+    if (from >= snapshot.length - 1) from = 0;
+    startReplay(from, snapshot.length - 1);
+  }
+  // Ein Tipp: die letzten Sekunden, die gerade zu sehen waren, in Zeitlupe als Schleife
+  function quickSlowMo() {
+    if (mode !== 'pause' && !enterPause()) return;
+    if (state.speed === 1) { state.speed = 0.5; save(); }
+    const endT = snapshot[pausedIdx].t;
+    let s = snapshot.findIndex(f => f.t >= endT - SLOMO_WINDOW);
+    if (s < 0) s = 0;
+    startReplay(s, pausedIdx);
   }
 
   // ---------- Bedienung ----------
@@ -293,48 +369,79 @@
     state.delay = Math.max(MIN_DELAY, Math.min(MAX_DELAY, d));
     save(); updateUI();
   }
+  const speedLabel = () => (SPEEDS.find(s => s[0] === state.speed) || SPEEDS[1])[1];
   function updateUI() {
+    document.body.className = 'mode-' + mode + (replay ? ' replaying' : '');
     $('delayVal').textContent = state.delay + ' s';
-    $('badgeTxt').textContent = state.paused ? 'Pause' : state.delay + ' s verzögert';
-    $('badge').classList.toggle('paused', state.paused);
-    $('pause').textContent = state.paused ? '▶ Weiter' : '⏸ Pause';
-    $('pause').classList.toggle('on', state.paused);
-    $('scrubBar').classList.toggle('show', state.paused);
+    $('badgeTxt').textContent = mode === 'live' ? state.delay + ' s verzögert'
+      : replay ? (state.speed === 1 ? 'Wiederholung' : 'Slow-Mo ' + speedLabel()) : 'Pause';
+    $('play').textContent = replay ? '⏸ Anhalten' : '▶ Abspielen';
+    $('mPlay').textContent = replay ? '⏸' : '▶';
+    $('loopBtn').classList.toggle('on', state.loop);
     $('mirrorBtn').classList.toggle('on', state.mirror);
     $('pipBtn').classList.toggle('on', state.pip);
     out.classList.toggle('mirror', state.mirror);
     video.classList.toggle('mirror', state.mirror);
-    video.classList.toggle('pip', state.pip);
+    video.classList.toggle('pip', state.pip && mode === 'live');
     $('quality').value = state.quality;
     document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', +b.dataset.d === state.delay));
+    document.querySelectorAll('#speeds button').forEach(b => b.classList.toggle('on', +b.dataset.s === state.speed));
+  }
+
+  // Menü ein-/ausblenden
+  function setControls(visible) {
+    controlsVisible = visible;
+    $('controls').classList.toggle('hidden', !visible);
+    $('mini').classList.toggle('show', !visible && running);
+    clearTimeout(hideTimer);
+  }
+  function showControls() {
+    setControls(true);
+    if (mode === 'live') hideTimer = setTimeout(() => setControls(false), 6000);
   }
 
   PRESETS.forEach(d => {
     const b = document.createElement('button');
     b.className = 'chip'; b.textContent = d + ' s'; b.dataset.d = d;
     b.onclick = () => setDelay(d);
-    $('chips').appendChild(b);
-    $('chips').append(' ');
+    $('chips').append(b, ' ');
   });
+  SPEEDS.forEach(([v, l]) => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = l; b.dataset.s = v;
+    b.onclick = () => { state.speed = v; save(); updateUI(); };
+    $('speeds').append(b, ' ');
+  });
+
   $('minus').onclick = () => setDelay(state.delay - 1);
   $('plus').onclick = () => setDelay(state.delay + 1);
-  $('pause').onclick = () => setPaused(!state.paused);
-  $('scrub').oninput = () => scrubTo(+$('scrub').value);
-  $('stepBack').onclick = () => scrubTo(+$('scrub').value - 1);
-  $('stepFwd').onclick = () => scrubTo(+$('scrub').value + 1);
+  $('pause').onclick = () => enterPause();
+  $('slomo').onclick = () => quickSlowMo();
+  $('resume').onclick = () => exitPause();
+  $('play').onclick = () => togglePlay();
+  $('loopBtn').onclick = () => { state.loop = !state.loop; save(); updateUI(); };
+  scrub.oninput = () => { stopReplay(); showIdx(+scrub.value); };
+  $('stepBack').onclick = () => step(-1);
+  $('stepFwd').onclick = () => step(1);
+  $('mBack').onclick = () => step(-1);
+  $('mFwd').onclick = () => step(1);
+  $('mPlay').onclick = () => togglePlay();
+  $('mPause').onclick = () => enterPause();
+  $('mSlomo').onclick = () => quickSlowMo();
+  $('mMenu').onclick = () => showControls();
+  $('handle').onclick = () => setControls(false);
   $('mirrorBtn').onclick = () => { state.mirror = !state.mirror; save(); updateUI(); };
   $('pipBtn').onclick = () => { state.pip = !state.pip; updateUI(); };
-  $('clear').onclick = () => { if (state.paused) setPaused(false); clearBuffer(); };
+  $('clear').onclick = () => { if (mode === 'pause') exitPause(); clearBuffer(); };
+  $('stopBtn').onclick = () => stopAll();
   $('flip').onclick = async () => {
     state.facing = state.facing === 'user' ? 'environment' : 'user';
     state.mirror = state.facing === 'user';
     save(); updateUI();
-    if (state.paused) setPaused(false);
     try { await startCamera(); } catch (e) { fail(e); }
   };
   $('quality').onchange = async () => {
     state.quality = $('quality').value; save();
-    if (state.paused) setPaused(false);
     try { await startCamera(); } catch (e) { fail(e); }
   };
   $('fs').onclick = () => {
@@ -348,37 +455,61 @@
       }
     } catch (e) { fsHint(); }
   };
+  let hintUntil = 0;
   function fsHint() {
+    hintUntil = Date.now() + 8000;
     $('info').textContent = 'Vollbild wird hier nicht unterstützt – Tipp: Seite über „Teilen → Zum Home-Bildschirm“ als App ablegen.';
   }
 
-  // Steuerleiste ein-/ausblenden (Tippen aufs Bild)
-  function showControls(stay) {
-    $('controls').classList.remove('hidden');
-    clearTimeout(hideTimer);
-    if (!stay && !state.paused) hideTimer = setTimeout(() => $('controls').classList.add('hidden'), 6000);
-  }
-  $('out').addEventListener('click', () => {
-    if ($('controls').classList.contains('hidden')) showControls(); else if (!state.paused) $('controls').classList.add('hidden');
+  // Tippen aufs Bild: Menü ein/aus
+  out.addEventListener('click', () => { controlsVisible ? setControls(false) : showControls(); });
+  // Menü nach unten wischen
+  let touchY = null;
+  $('controls').addEventListener('touchstart', e => { touchY = e.touches[0].clientY; }, { passive: true });
+  $('controls').addEventListener('touchend', e => {
+    if (touchY !== null && e.target !== scrub && e.changedTouches[0].clientY - touchY > 50) setControls(false);
+    touchY = null;
   });
-  $('controls').addEventListener('pointerdown', () => showControls());
+  $('controls').addEventListener('pointerdown', () => { if (mode === 'live') showControls(); });
+
+  // Tastatur / Bluetooth-Fernbedienung
+  document.addEventListener('keydown', e => {
+    if (!running || e.target.tagName === 'SELECT') return;
+    const k = e.key;
+    if (k === ' ' || k === 'Enter') { e.preventDefault(); mode === 'live' ? enterPause() : exitPause(); }
+    else if (k === 's' || k === 'S') quickSlowMo();
+    else if ((k === 'p' || k === 'P') && mode === 'pause') togglePlay();
+    else if ((k === 'ArrowLeft' || k === 'PageUp') && mode === 'pause') { e.preventDefault(); step(-1); }
+    else if ((k === 'ArrowRight' || k === 'PageDown') && mode === 'pause') { e.preventDefault(); step(1); }
+    else if (k === 'Escape' && mode === 'pause') exitPause();
+  });
 
   // Bildschirm wach halten
   async function requestWakeLock() {
     try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) {}
   }
+  function releaseWakeLock() { try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null; }
+
+  // Stopp: Kamera aus, alles gelöscht, zurück zum Start
+  function stopAll() {
+    if (mode === 'pause') exitPause();
+    running = false;
+    stopCamera(); clearBuffer(); hideCountdown(); releaseWakeLock();
+    setControls(true); clearTimeout(hideTimer);
+    $('mini').classList.remove('show');
+    $('start').style.display = 'flex';
+  }
 
   // App verlassen -> Kamera aus, Puffer gelöscht
   document.addEventListener('visibilitychange', async () => {
     if (!running) return;
-    if (document.hidden) { if (state.paused) setPaused(false); stopCamera(); clearBuffer(); }
+    if (document.hidden) { if (mode === 'pause') exitPause(); stopCamera(); clearBuffer(); }
     else { try { await startCamera(); } catch (e) { fail(e); } }
   });
 
   function fail(e) {
-    running = false; stopCamera();
-    $('start').style.display = 'flex';
+    stopAll();
     let msg = 'Die Kamera konnte nicht gestartet werden.';
     if (e && e.message === 'insecure') msg = 'Die Seite muss über eine sichere Adresse (https://) geöffnet werden, sonst gibt der Browser die Kamera nicht frei.';
     else if (e && e.name === 'NotAllowedError') msg = 'Der Kamerazugriff wurde verweigert. Bitte in den Browser-Einstellungen für diese Seite erlauben und erneut starten.';
@@ -393,17 +524,16 @@
       await startCamera();
       running = true;
       $('start').style.display = 'none';
+      updateUI();
       showControls();
     } catch (e) { fail(e); }
   };
 
   // Puffer-Anzeige
   setInterval(() => {
-    if (!running) return;
+    if (!running || Date.now() < hintUntil) return;
     const secs = buffer.length > 1 ? ((buffer[buffer.length - 1].t - buffer[0].t) / 1000).toFixed(0) : 0;
-    const vw = video.videoWidth, vh = video.videoHeight;
-    if (!$('info').textContent.startsWith('Vollbild'))
-      $('info').textContent = `Puffer: ${secs} s · ${(bytes / 1048576).toFixed(0)} MB im Arbeitsspeicher · Kamera ${vw}×${vh} · nichts wird gespeichert`;
+    $('info').textContent = `Puffer: ${secs} s · ${(bytes / 1048576).toFixed(0)} MB im Arbeitsspeicher · Kamera ${video.videoWidth}×${video.videoHeight} · nichts wird gespeichert · ${VERSION}`;
   }, 1000);
 
   updateUI();
