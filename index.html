@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="Sport-Delay">
 <meta name="theme-color" content="#000000">
 <title>Sport-Delay</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
   :root { --acc:#ffb020; --blue:#60a5fa; --bg:rgba(20,20,22,.86); --fg:#f4f4f5; --mut:#a1a1aa; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -76,6 +79,8 @@
   #start .go { background:var(--acc); color:#111; font-weight:800; font-size:22px; min-height:60px; padding:0 32px; border:0; margin:16px 0; }
   #start .priv { font-size:14px; color:var(--mut); border-top:1px solid #333; padding-top:14px; margin-top:12px; }
   #err { color:#fca5a5; font-weight:600; }
+  #offline { font-size:14px; color:var(--mut); margin-top:8px; min-height:1em; }
+  #offline.ok { color:#86efac; }
 </style>
 </head>
 <body class="mode-live">
@@ -149,6 +154,7 @@
          auf Wunsch in Zeitlupe.</p>
       <button class="go" id="goBtn">▶ Kamera starten</button>
       <div id="err"></div>
+      <div id="offline"></div>
       <div class="priv">🔒 <b>Es wird nichts gespeichert und nichts übertragen.</b> Das Bild liegt nur wenige Sekunden
         im Arbeitsspeicher dieses Geräts und wird laufend überschrieben. Mit „Stopp“, beim Schließen oder Wechseln der App ist alles gelöscht.</div>
     </div>
@@ -157,7 +163,7 @@
 
 <script>
 (() => {
-  const VERSION = 'v2';
+  const VERSION = 'v2.1';
   const $ = id => document.getElementById(id);
   const video = $('cam'), out = $('out'), octx = out.getContext('2d');
   const cap = document.createElement('canvas'), cctx = cap.getContext('2d');
@@ -535,6 +541,14 @@
     const secs = buffer.length > 1 ? ((buffer[buffer.length - 1].t - buffer[0].t) / 1000).toFixed(0) : 0;
     $('info').textContent = `Puffer: ${secs} s · ${(bytes / 1048576).toFixed(0)} MB im Arbeitsspeicher · Kamera ${video.videoWidth}×${video.videoHeight} · nichts wird gespeichert · ${VERSION}`;
   }, 1000);
+
+  // Offline-Speicher: App-Dateien auf dem Gerät ablegen (keine Kamerabilder)
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => {
+      $('offline').textContent = '✓ Offline bereit – startet auch ohne Internet';
+      $('offline').className = 'ok';
+    }).catch(() => {});
+  }
 
   updateUI();
   requestAnimationFrame(render);
